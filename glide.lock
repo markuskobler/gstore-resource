@@ -1,0 +1,12 @@
+hash: d122ed2d00126202f2ffe7dc2ecb27a5e15a06acd020bd6a6ed49caad6493865
+updated: 2017-06-30T17:46:15.976235681-04:00
+imports:
+- name: cloud.google.com/go
+  version: 0ee6d20f45c3f9a7b78694a786cc49e0139746cb
+- name: google.golang.org/api
+  version: d9d64fe74969b80fb4a435ae9280c9ff061a6097
+testImports:
+- name: github.com/onsi/ginkgo
+  version: a1f616c97771e46da1722d3aa9dcde0a43f55682
+- name: github.com/onsi/gomega
+  version: 39a54bd3c3bbfe1c331a9b3207e92134c77ed812

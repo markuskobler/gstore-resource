@@ -1,0 +1,14 @@
+platform: linux
+image_resource:
+  type: docker-image
+  source: { repository: quay.io/markus/golang, tag: 1.8-stretch }
+
+inputs:
+- name: gstore-resource
+  path: go/src/github.com/markuskobler/gstore-resource
+
+outputs:
+- name: build
+
+run:
+  path: go/src/github.com/markuskobler/gstore-resource/.concourse/build.sh
