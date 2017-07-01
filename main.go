@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"cloud.google.com/go/storage"
 )
 
 var cmd string
@@ -120,12 +124,77 @@ var now = func() int {
 func execOut(r *Runner, source string, req OutRequest) (resp OutResponse) {
 	resp.Version.Timestamp = strconv.Itoa(now())
 	root := filepath.Join(source, req.Params.Source)
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err == nil {
+
+	var files []string
+
+	r.Log("Scan directory %s", root)
+	filepath.Walk(root, func(f string, info os.FileInfo, err error) error {
+		if err != nil {
 			return err
 		}
-		r.Log(">> %s", path)
+		if !info.IsDir() {
+			files = append(files, f)
+		}
 		return nil
 	})
+
+	if len(files) == 0 {
+		// TODO: return empty?
+		return
+	}
+
+	client, err := storage.NewClient(context.Background())
+	if err != nil {
+		r.Fail("google storage failed: %s", err)
+		return
+	}
+
+	// TODO check the existing objects
+
+	for _, path := range files {
+		err = writeFile(r, client, req.Params.Bucket, req.Params.Prefix, root, path)
+		if err != nil {
+			r.Fail("Failed to write %s: %s", path, err)
+		}
+	}
+
 	return
+}
+
+func writeFile(r *Runner, client *storage.Client, bucket, prefix, root, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+
+	name, _ := filepath.Rel(root, path)
+
+	r.Log(">> %s", name)
+
+	obj := client.Bucket(bucket).Object(filepath.Join(prefix, name))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	writer := obj.NewWriter(ctx)
+	writer.ContentType = "binary/octet-stream"
+	writer.CacheControl = "private, max-age=0"
+
+	_, err = io.Copy(writer, file)
+	if err != nil {
+		writer.Close()
+		return err
+	}
+	err = writer.Close()
+	if err != nil {
+		return err
+	}
+
+	attr := writer.Attrs()
+
+	r.Log("Generation: %s", attr.Generation)
+	r.Log("CRC32:      %s", attr.CRC32C)
+	r.Log("MD5:        %s", hex.EncodeToString(attr.MD5))
+
+	return nil
 }
