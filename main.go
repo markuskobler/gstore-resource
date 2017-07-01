@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -47,14 +48,19 @@ func (r Runner) Exec(cmd string, args ...string) {
 		if len(args) != 1 {
 			r.Fail("usage: out <source>")
 		}
+		source := args[0]
+
+		var buf bytes.Buffer
 
 		var req OutRequest
-		err := json.NewDecoder(os.Stdin).Decode(&req)
+		err := json.NewDecoder(io.TeeReader(os.Stdin, &buf)).Decode(&req)
 		if err != nil {
 			r.Fail("invalid JSON request: %s", err)
 		}
 
-		resp := execOut(&r, req)
+		r.Log("Output %s", buf.String())
+
+		resp := execOut(&r, req, source)
 
 		err = json.NewEncoder(os.Stdout).Encode(&resp)
 		if err != nil {
@@ -80,8 +86,9 @@ var now = func() int {
 	return int(time.Now().Unix())
 }
 
-func execOut(r *Runner, req OutRequest) (resp OutResponse) {
+func execOut(r *Runner, req OutRequest, source string) (resp OutResponse) {
 	resp.Version.Timestamp = strconv.Itoa(now())
+
 	return
 }
 
