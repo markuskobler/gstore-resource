@@ -192,8 +192,8 @@ func writeFile(r *Runner, client *storage.Client, bucket, prefix, root, path str
 
 	attr := writer.Attrs()
 
-	r.Log("Generation: %s", attr.Generation)
-	r.Log("CRC32:      %s", attr.CRC32C)
+	r.Log("Generation: %d", attr.Generation)
+	r.Log("CRC32:      %d", attr.CRC32C)
 	r.Log("MD5:        %s", hex.EncodeToString(attr.MD5))
 
 	return nil
