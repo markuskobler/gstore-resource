@@ -9,7 +9,7 @@ out=${PWD}/build
 
 cd ${src}
 
-tag=$(git describe --exact-match --abbrev=0 || true)
+tag=$(git describe --exact-match --abbrev=0 2>/dev/null|| true)
 tag=${tag:-dev}
 commit=$(git rev-parse --short HEAD)
 

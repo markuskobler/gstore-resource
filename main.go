@@ -35,7 +35,7 @@ type Runner struct {
 func (r Runner) Exec(cmd string, args ...string) {
 	switch cmd {
 	case "check":
-		fmt.Fprintf(os.Stdout, `{"version":{"ref":"none"}}`)
+		fmt.Fprintf(os.Stdout, `{"version":[]}`)
 
 	case "in":
 		if len(args) != 1 {
@@ -47,16 +47,17 @@ func (r Runner) Exec(cmd string, args ...string) {
 		if len(args) != 1 {
 			r.Fail("usage: out <source>")
 		}
+		source := args[0]
 
 		var req OutRequest
-		err := json.NewDecoder(os.Stdin).Decode(&req)
+		err := json.NewDecoder(r.Stdin).Decode(&req)
 		if err != nil {
 			r.Fail("invalid JSON request: %s", err)
 		}
 
-		resp := execOut(&r, req)
+		resp := execOut(&r, source, req)
 
-		err = json.NewEncoder(os.Stdout).Encode(&resp)
+		err = json.NewEncoder(r.Stdout).Encode(&resp)
 		if err != nil {
 			r.Fail("invalid JSON response: %s", err)
 		}
@@ -76,15 +77,6 @@ func (r *Runner) Fail(msg string, args ...interface{}) {
 	os.Exit(1)
 }
 
-var now = func() int {
-	return int(time.Now().Unix())
-}
-
-func execOut(r *Runner, req OutRequest) (resp OutResponse) {
-	resp.Version.Timestamp = strconv.Itoa(now())
-	return
-}
-
 type OutRequest struct {
 	Source  Source    `json:"source"`
 	Version Version   `json:"version"`
@@ -100,7 +92,9 @@ type Version struct {
 }
 
 type OutParams struct {
-	Status string `json:"status"`
+	Source string `json:"source"`
+	Bucket string `json:"bucket"`
+	Prefix string `json:"prefix"`
 }
 
 type OutResponse struct {
@@ -117,4 +111,21 @@ type Metadata []MetadataField
 type MetadataField struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+var now = func() int {
+	return int(time.Now().Unix())
+}
+
+func execOut(r *Runner, source string, req OutRequest) (resp OutResponse) {
+	resp.Version.Timestamp = strconv.Itoa(now())
+	root := filepath.Join(source, req.Params.Source)
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err == nil {
+			return err
+		}
+		r.Log(">> %s", path)
+		return nil
+	})
+	return
 }
