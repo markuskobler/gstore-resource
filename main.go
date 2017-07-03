@@ -39,13 +39,26 @@ type Runner struct {
 func (r Runner) Exec(cmd string, args ...string) {
 	switch cmd {
 	case "check":
-		fmt.Fprintf(os.Stdout, `{"version":[]}`)
+		fmt.Fprintf(r.Stdout, `{"version":[]}`)
 
 	case "in":
 		if len(args) != 1 {
 			r.Fail("usage: in <destination>")
 		}
-		fmt.Fprintf(os.Stdout, `{"version":{"ref":"none"}}`)
+		destination := args[0]
+
+		var req InRequest
+		err := json.NewDecoder(os.Stdin).Decode(&req)
+		if err != nil {
+			r.Fail("invalid JSON request: %s", err)
+		}
+
+		resp := execIn(&r, destination, req)
+
+		err = json.NewEncoder(os.Stdout).Encode(&resp)
+		if err != nil {
+			r.Fail("invalid JSON response: %s", err)
+		}
 
 	case "out":
 		if len(args) != 1 {
@@ -81,10 +94,20 @@ func (r *Runner) Fail(msg string, args ...interface{}) {
 	os.Exit(1)
 }
 
+type InRequest struct {
+	Source  Source           `json:"source"`
+	Version TimestampVersion `json:"version"`
+	Params  OutParams        `json:"params"`
+}
+
+type InResponse struct {
+	Version TimestampVersion `json:"version"`
+}
+
 type OutRequest struct {
-	Source  Source    `json:"source"`
-	Version Version   `json:"version"`
-	Params  OutParams `json:"params"`
+	Source  Source           `json:"source"`
+	Version TimestampVersion `json:"version"`
+	Params  OutParams        `json:"params"`
 }
 
 type Source struct {
@@ -121,6 +144,15 @@ var now = func() int {
 	return int(time.Now().Unix())
 }
 
+func execIn(r *Runner, destination string, req InRequest) (resp InResponse) {
+	if req.Version.Timestamp != "" {
+		resp.Version = req.Version
+	} else {
+		resp.Version.Timestamp = "none"
+	}
+	return
+}
+
 func execOut(r *Runner, source string, req OutRequest) (resp OutResponse) {
 	resp.Version.Timestamp = strconv.Itoa(now())
 	root := filepath.Join(source, req.Params.Source)
@@ -143,12 +175,22 @@ func execOut(r *Runner, source string, req OutRequest) (resp OutResponse) {
 		return
 	}
 
-	client, err := storage.NewClient(context.Background())
+	// verry cude incremental backoff
+	backoffs := []int64{1, 3, 9}
+	var err error
+	var client *storage.Client
+	for attempt := 0; ; attempt += 1 {
+		if client, err = storage.NewClient(context.Background()); err == nil {
+			break
+		} else if attempt >= len(backoffs) {
+			break
+		}
+		time.Sleep(time.Duration(backoffs[attempt]) * time.Second)
+	}
 	if err != nil {
 		r.Fail("google storage failed: %s", err)
 		return
 	}
-
 	// TODO check the existing objects
 
 	for _, path := range files {
@@ -192,9 +234,7 @@ func writeFile(r *Runner, client *storage.Client, bucket, prefix, root, path str
 
 	attr := writer.Attrs()
 
-	r.Log("Generation: %d", attr.Generation)
-	r.Log("CRC32:      %d", attr.CRC32C)
-	r.Log("MD5:        %s", hex.EncodeToString(attr.MD5))
+	r.Log(">> %s (generation: %x, crc: %x, md5: %s)", name, attr.Generation, attr.CRC32C, hex.EncodeToString(attr.MD5))
 
 	return nil
 }
