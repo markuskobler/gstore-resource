@@ -175,19 +175,8 @@ func execOut(r *Runner, source string, req OutRequest) (resp OutResponse) {
 		return
 	}
 
-	// verry cude incremental backoff
-	backoffs := []int64{1, 3, 9}
-	var err error
-	var client *storage.Client
-	for attempt := 0; ; attempt += 1 {
-		if client, err = storage.NewClient(context.Background()); err == nil {
-			break
-		} else if attempt >= len(backoffs) {
-			break
-		}
-		time.Sleep(time.Duration(backoffs[attempt]) * time.Second)
-	}
-	if err != nil {
+	client, err := storage.NewClient(context.Background())
+	if err == nil {
 		r.Fail("google storage failed: %s", err)
 		return
 	}
