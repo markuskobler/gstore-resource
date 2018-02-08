@@ -7,12 +7,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/option"
 )
 
 var cmd string
@@ -111,7 +113,8 @@ type OutRequest struct {
 }
 
 type Source struct {
-	URL string `json:"url"`
+	URL         string `json:"url"`
+	Credentials string `json:"credentials"`
 }
 
 type Version struct {
@@ -175,8 +178,25 @@ func execOut(r *Runner, source string, req OutRequest) (resp OutResponse) {
 		return
 	}
 
-	client, err := storage.NewClient(context.Background())
-	if err == nil {
+	ctx := context.Background()
+
+	var client *storage.Client
+	var err error
+
+	if req.Source.Credentials != "" {
+		f := filepath.Join("/tmp", "creds")
+		e := ioutil.WriteFile(f, []byte(req.Source.Credentials), 0600)
+		if e != nil {
+			r.Fail("Failed to write creds file %s - %s", f, e)
+		}
+		client, err = storage.NewClient(ctx, option.WithCredentialsFile(f))
+	}
+
+	if client == nil {
+		client, err = storage.NewClient(ctx)
+	}
+
+	if err != nil {
 		r.Fail("google storage failed: %s", err)
 		return
 	}
